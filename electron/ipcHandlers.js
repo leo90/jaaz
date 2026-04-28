@@ -13,6 +13,11 @@ module.exports = {
   // 处理打开浏览器的请求
   'open-browser-url': async (event, url) => {
     try {
+      // Only allow http/https URLs to prevent file:// and custom protocol abuse
+      const parsedUrl = new URL(url)
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return { success: false, error: 'Only http/https URLs are allowed' }
+      }
       await shell.openExternal(url)
       return { success: true }
     } catch (error) {
@@ -68,42 +73,26 @@ module.exports = {
         installationWorker.on('message', (message) => {
           console.log('🦄 Received message from worker:', message)
 
-          // Forward progress, log, error, and cancelled messages to renderer
+          // Forward progress, log, error, and cancelled messages to renderer via IPC
           const mainWindow = BrowserWindow.getAllWindows()[0]
           if (mainWindow) {
             if (message.type === 'progress') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-install-progress', {
-                  detail: { percent: ${message.percent}, status: "${(
-                message.status || ''
-              ).replace(/"/g, '\\"')}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-install-progress', {
+                percent: message.percent,
+                status: message.status || '',
+              })
             } else if (message.type === 'log') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-install-log', {
-                  detail: { message: "${(message.message || '').replace(
-                    /"/g,
-                    '\\"'
-                  )}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-install-log', {
+                message: message.message || '',
+              })
             } else if (message.type === 'error') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-install-error', {
-                  detail: { error: "${(
-                    message.error || 'Unknown error occurred'
-                  ).replace(/"/g, '\\"')}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-install-error', {
+                error: message.error || 'Unknown error occurred',
+              })
             } else if (message.type === 'cancelled') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-install-cancelled', {
-                  detail: { message: "${(
-                    message.message || 'Installation cancelled'
-                  ).replace(/"/g, '\\"')}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-install-cancelled', {
+                message: message.message || 'Installation cancelled',
+              })
             }
           }
 
@@ -270,34 +259,22 @@ module.exports = {
         installationWorker.on('message', (message) => {
           console.log('🦄 Received message from worker:', message)
 
-          // Forward progress, log, and error messages to renderer
+          // Forward progress, log, and error messages to renderer via IPC
           const mainWindow = BrowserWindow.getAllWindows()[0]
           if (mainWindow) {
             if (message.type === 'progress') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-uninstall-progress', {
-                  detail: { percent: ${message.percent}, status: "${(
-                message.status || ''
-              ).replace(/"/g, '\\"')}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-uninstall-progress', {
+                percent: message.percent,
+                status: message.status || '',
+              })
             } else if (message.type === 'log') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-uninstall-log', {
-                  detail: { message: "${(message.message || '').replace(
-                    /"/g,
-                    '\\"'
-                  )}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-uninstall-log', {
+                message: message.message || '',
+              })
             } else if (message.type === 'error') {
-              mainWindow.webContents.executeJavaScript(`
-                window.dispatchEvent(new CustomEvent('comfyui-uninstall-error', {
-                  detail: { error: "${(
-                    message.error || 'Unknown error occurred'
-                  ).replace(/"/g, '\\"')}" }
-                }));
-              `)
+              mainWindow.webContents.send('comfyui-uninstall-error', {
+                error: message.error || 'Unknown error occurred',
+              })
             }
           }
 

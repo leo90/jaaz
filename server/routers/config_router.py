@@ -1,3 +1,4 @@
+import copy
 from fastapi import APIRouter, Request
 from services.config_service import config_service
 # from tools.video_models_dynamic import register_video_models  # Disabled video models
@@ -13,7 +14,16 @@ async def config_exists():
 
 @router.get("")
 async def get_config():
-    return config_service.app_config
+    # Return config with api_key fields masked to prevent credential exposure
+    config = copy.deepcopy(config_service.app_config)
+    for provider, provider_config in config.items():
+        if isinstance(provider_config, dict) and 'api_key' in provider_config:
+            key = provider_config['api_key']
+            if key and len(key) > 4:
+                provider_config['api_key'] = key[:4] + '****'
+            elif key:
+                provider_config['api_key'] = '****'
+    return config
 
 
 @router.post("")

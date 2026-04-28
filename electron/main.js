@@ -32,7 +32,7 @@ console.error = (...args) => {
 // Initial log entry
 console.log('🟢 Jaaz Electron app starting...')
 
-const { app, BrowserWindow, ipcMain, dialog, session } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, session, protocol } = require('electron')
 const { spawn } = require('child_process')
 
 const { autoUpdater } = require('electron-updater')
@@ -131,9 +131,6 @@ const createWindow = (pyPort) => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      // for showing local image and video files
-      webSecurity: false,
-      allowRunningInsecureContent: true,
     },
   })
 
@@ -150,12 +147,23 @@ const createWindow = (pyPort) => {
   })
 
   // Handle all navigation requests (intercept all link clicks)
-  // 主要用于处理视频链接导致的页面跳转
   mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
     console.log('Navigation requested:', navigationUrl)
     event.preventDefault()
 
-    // Create new window for external links
+    // Only allow http/https URLs in child windows
+    try {
+      const parsed = new URL(navigationUrl)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        console.error('Blocked navigation to non-http(s) URL:', navigationUrl)
+        return
+      }
+    } catch {
+      console.error('Invalid URL in navigation request:', navigationUrl)
+      return
+    }
+
+    // Create new window for external links with sandbox for isolation
     const newWindow = new BrowserWindow({
       width: 800,
       height: 600,
@@ -165,8 +173,7 @@ const createWindow = (pyPort) => {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        webSecurity: false,
-        allowRunningInsecureContent: true,
+        sandbox: true,
       },
     })
     newWindow.loadURL(navigationUrl)
@@ -302,8 +309,21 @@ const startPythonApi = async () => {
   return pyPort
 }
 
+// Validate IPC origin helper
+function validateIpcOrigin(event) {
+  const origin = event.senderFrame.origin
+  const isAllowed = Array.from(ALLOWED_IPC_ORIGINS).some(allowed =>
+    origin === allowed || origin.startsWith(allowed)
+  )
+  if (!isAllowed) {
+    console.error(`IPC call from unauthorized origin: ${origin}`)
+    throw new Error(`IPC call from unauthorized origin: ${origin}`)
+  }
+}
+
 // Add these handlers before app.whenReady()
-ipcMain.handle('pick-image', async () => {
+ipcMain.handle('pick-image', async (event) => {
+  validateIpcOrigin(event)
   const result = await dialog.showOpenDialog({
     properties: ['openFile', 'multiSelections'],
     filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] }],
@@ -315,7 +335,8 @@ ipcMain.handle('pick-image', async () => {
   return null
 })
 
-ipcMain.handle('pick-video', async () => {
+ipcMain.handle('pick-video', async (event) => {
+  validateIpcOrigin(event)
   const result = await dialog.showOpenDialog({
     properties: ['openFile'],
     filters: [{ name: 'Videos', extensions: ['mp4', 'webm', 'mov', 'avi'] }],
@@ -328,7 +349,8 @@ ipcMain.handle('pick-video', async () => {
 })
 
 // Add IPC handlers for manual update check
-ipcMain.handle('check-for-updates', () => {
+ipcMain.handle('check-for-updates', (event) => {
+  validateIpcOrigin(event)
   if (app.isPackaged) {
     autoUpdater.checkForUpdatesAndNotify()
     return { message: 'Checking for updates...' }
@@ -338,14 +360,33 @@ ipcMain.handle('check-for-updates', () => {
 })
 
 // restart and install the new version
-ipcMain.handle('restart-and-install', () => {
+ipcMain.handle('restart-and-install', (event) => {
+  validateIpcOrigin(event)
   autoUpdater.quitAndInstall()
 })
 
 const ipcHandlers = require('./ipcHandlers')
 
+// Allowed origins for IPC calls (prevent malicious child windows from calling handlers)
+const ALLOWED_IPC_ORIGINS = new Set([
+  'http://localhost:5174',    // Vite dev server
+  'http://127.0.0.1',        // Production Python server
+  'file://',                  // Local file protocol
+])
+
 for (const [channel, handler] of Object.entries(ipcHandlers)) {
-  ipcMain.handle(channel, handler)
+  ipcMain.handle(channel, (event, ...args) => {
+    // Validate IPC origin — reject calls from unauthorized frames
+    const origin = event.senderFrame.origin
+    const isAllowed = Array.from(ALLOWED_IPC_ORIGINS).some(allowed =>
+      origin === allowed || origin.startsWith(allowed)
+    )
+    if (!isAllowed) {
+      console.error(`IPC call from unauthorized origin: ${origin} on channel: ${channel}`)
+      throw new Error(`IPC call from unauthorized origin: ${origin}`)
+    }
+    return handler(event, ...args)
+  })
 }
 
 // Make this app a single instance app
@@ -365,6 +406,13 @@ if (!gotTheLock) {
   })
 
   app.whenReady().then(async () => {
+    // Register custom protocol for local file access (replaces webSecurity:false)
+    protocol.handle('local-file', (request) => {
+      const filePath = decodeURIComponent(request.url.replace('local-file://', ''))
+      const { net: electronNet } = require('electron')
+      return electronNet.fetch(`file://${filePath}`)
+    })
+
     // Initialize proxy settings for Electron sessions
     try {
       await settingsService.applyProxySettings()
@@ -384,9 +432,23 @@ if (!gotTheLock) {
     // Start Python API in both development and production
     const pyPort = await startPythonApi()
 
+    // Wait for Python server to start, with timeout (max 60 seconds)
+    const SERVER_START_TIMEOUT = 60_000
+    const POLL_INTERVAL = 1000
+    const startTime = Date.now()
+
     while (true) {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      // wait for the server to start
+      if (Date.now() - startTime > SERVER_START_TIMEOUT) {
+        console.error(`Python server failed to start within ${SERVER_START_TIMEOUT / 1000}s`)
+        dialog.showErrorBox(
+          'Server Start Failed',
+          'The Python server failed to start within the expected time. Please try restarting the application.'
+        )
+        app.quit()
+        return
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL))
       let status = await fetch(`http://127.0.0.1:${pyPort}`)
         .then((res) => {
           return res.ok

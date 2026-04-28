@@ -1,4 +1,5 @@
 import { compressImageFile } from '@/utils/imageUtils'
+import { apiFetch } from '@/api/fetchUtils'
 
 export async function uploadImage(
   file: File
@@ -8,9 +9,8 @@ export async function uploadImage(
 
   const formData = new FormData()
   formData.append('file', compressedFile)
-  const response = await fetch('/api/upload_image', {
+  return apiFetch('/api/upload_image', {
     method: 'POST',
     body: formData,
   })
-  return await response.json()
 }

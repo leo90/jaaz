@@ -1,10 +1,9 @@
 import { Message, Model } from '@/types/types'
 import { ModelInfo, ToolInfo } from './model'
+import { apiFetch } from '@/api/fetchUtils'
 
 export const getChatSession = async (sessionId: string) => {
-  const response = await fetch(`/api/chat_session/${sessionId}`)
-  const data = await response.json()
-  return data as Message[]
+  return apiFetch<Message[]>(`/api/chat_session/${sessionId}`)
 }
 
 export const sendMessages = async (payload: {
@@ -15,7 +14,7 @@ export const sendMessages = async (payload: {
   toolList: ToolInfo[]
   systemPrompt: string | null
 }) => {
-  const response = await fetch(`/api/chat`, {
+  return apiFetch<Message[]>(`/api/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -29,13 +28,10 @@ export const sendMessages = async (payload: {
       system_prompt: payload.systemPrompt,
     }),
   })
-  const data = await response.json()
-  return data as Message[]
 }
 
 export const cancelChat = async (sessionId: string) => {
-  const response = await fetch(`/api/cancel/${sessionId}`, {
+  return apiFetch(`/api/cancel/${sessionId}`, {
     method: 'POST',
   })
-  return await response.json()
 }

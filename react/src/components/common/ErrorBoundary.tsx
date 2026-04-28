@@ -16,7 +16,7 @@ const ErrorBoundary: React.FC<ErrorComponentProps> = ({ error, reset }) => {
         <p>Error Message: {error?.message}</p>
       </div>
       <div className="flex flex-col gap-2 mt-4 bg-orange-50 rounded-md p-3 border border-orange-100">
-        <pre className="text-sm">{error?.stack}</pre>
+        {import.meta.env.DEV && <pre className="text-sm">{error?.stack}</pre>}
 
         <div className="flex gap-2 w-full justify-center items-center mt-4">
           <Button variant="ghost" onClick={handleBackToHome}>

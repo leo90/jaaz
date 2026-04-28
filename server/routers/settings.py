@@ -27,12 +27,16 @@ import json
 import os
 import shutil
 import httpx
+from urllib.parse import urlparse
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Form
 from services.db_service import db_service
 from services.settings_service import settings_service
 from services.tool_service import tool_service
 from services.knowledge_service import list_user_enabled_knowledge
 from pydantic import BaseModel
+
+# Allowed hosts for ComfyUI proxy (SSRF protection)
+_ALLOWED_PROXY_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 # 创建设置相关的路由器，所有端点都以 /api/settings 为前缀
 router = APIRouter(prefix="/api/settings")
@@ -275,24 +279,33 @@ async def delete_workflow(id: int):
 @router.post("/comfyui/proxy")
 async def comfyui_proxy(request: Request):
     try:
-        # 从请求中获取ComfyUI的目标URL和路径
         data = await request.json()
-        target_url = data.get("url")  # 前端传递的ComfyUI地址（如http://127.0.0.1:8188）
-        path = data.get("path", "")   # 请求的路径（如/system_stats）
+        target_url = data.get("url")
+        path = data.get("path", "")
 
         if not target_url or not path:
             raise HTTPException(
                 status_code=400, detail="Missing 'url' or 'path' in request body")
 
-        # 构造完整的ComfyUI请求URL
+        # Validate target URL to prevent SSRF — only allow localhost addresses
+        parsed = urlparse(target_url)
+        if parsed.hostname not in _ALLOWED_PROXY_HOSTS:
+            raise HTTPException(
+                status_code=403, detail="Only localhost addresses are allowed for proxy")
+
+        # Only allow http/https schemes
+        if parsed.scheme not in ("http", "https"):
+            raise HTTPException(
+                status_code=403, detail="Only http/https schemes are allowed for proxy")
+
         full_url = f"{target_url}{path}"
 
-        # 使用httpx转发请求（支持GET/POST等方法，这里示例用GET）
         async with httpx.AsyncClient() as client:
             response = await client.get(full_url)
-            # 将ComfyUI的响应原样返回给前端
             return response.json()
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Proxy request failed: {str(e)}")

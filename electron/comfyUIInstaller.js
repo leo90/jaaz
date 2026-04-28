@@ -196,17 +196,13 @@ function sendProgress(percent, status) {
       })
     }
   } else {
-    // In main process, send to renderer
+    // In main process, send to renderer via IPC (safe — no string interpolation)
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (mainWindow) {
-      mainWindow.webContents.executeJavaScript(`
-        window.dispatchEvent(new CustomEvent('comfyui-install-progress', {
-          detail: { percent: ${percent}, status: "${status.replace(
-        /"/g,
-        '\\"'
-      )}" }
-        }));
-      `)
+      mainWindow.webContents.send('comfyui-install-progress', {
+        percent: percent,
+        status: status,
+      })
     }
   }
 }
@@ -225,14 +221,12 @@ function sendLog(message) {
       })
     }
   } else {
-    // In main process, send to renderer
+    // In main process, send to renderer via IPC (safe — no string interpolation)
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (mainWindow) {
-      mainWindow.webContents.executeJavaScript(`
-        window.dispatchEvent(new CustomEvent('comfyui-install-log', {
-          detail: { message: "${message.replace(/"/g, '\\"')}" }
-        }));
-      `)
+      mainWindow.webContents.send('comfyui-install-log', {
+        message: message,
+      })
     }
   }
   console.log(`[ComfyUI Install] ${message}`)
@@ -254,14 +248,12 @@ function sendError(error) {
       })
     }
   } else {
-    // In main process, send to renderer
+    // In main process, send to renderer via IPC (safe — no string interpolation)
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (mainWindow) {
-      mainWindow.webContents.executeJavaScript(`
-        window.dispatchEvent(new CustomEvent('comfyui-install-error', {
-          detail: { error: "${errorMessage.replace(/"/g, '\\"')}" }
-        }));
-      `)
+      mainWindow.webContents.send('comfyui-install-error', {
+        error: errorMessage,
+      })
     }
   }
 }
@@ -282,14 +274,12 @@ function sendCancelled(message) {
       })
     }
   } else {
-    // In main process, send to renderer
+    // In main process, send to renderer via IPC (safe — no string interpolation)
     const mainWindow = BrowserWindow.getAllWindows()[0]
     if (mainWindow) {
-      mainWindow.webContents.executeJavaScript(`
-        window.dispatchEvent(new CustomEvent('comfyui-install-cancelled', {
-          detail: { message: "${cancelMessage.replace(/"/g, '\\"')}" }
-        }));
-      `)
+      mainWindow.webContents.send('comfyui-install-cancelled', {
+        message: cancelMessage,
+      })
     }
   }
   console.log(`[ComfyUI Install Cancelled] ${cancelMessage}`)
@@ -929,11 +919,11 @@ async function installComfyUI() {
 if (isWorkerProcess) {
   console.log('🦄 ComfyUI install worker process started and ready')
 
-  // Handle uncaught exceptions to prevent process crash
+  // Handle uncaught exceptions — must exit per Node.js docs (process is in inconsistent state)
   process.on('uncaughtException', (error) => {
     console.error('🦄 Uncaught exception in worker process:', error)
 
-    // Send error message to parent process
+    // Send error message to parent process before exiting
     if (process.send) {
       process.send({
         type: 'install-error',
@@ -942,7 +932,7 @@ if (isWorkerProcess) {
       })
     }
 
-    // Don't exit, let the parent process handle it
+    process.exit(1)
   })
 
   // Handle unhandled promise rejections
@@ -958,7 +948,8 @@ if (isWorkerProcess) {
       })
     }
 
-    // Don't exit, let the parent process handle it
+    // Exit after reporting — unhandled rejections leave process in inconsistent state
+    process.exit(1)
   })
 
   // Handle process messages

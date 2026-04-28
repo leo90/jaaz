@@ -27,6 +27,16 @@ interface ElectronAPI {
   removeUpdateDownloadedListener: () => void
   // Auth methods
   openBrowserUrl: (url: string) => Promise<{ success: boolean; error?: string }>
+  // ComfyUI install event listeners (via IPC, replaces unsafe CustomEvent dispatch)
+  onComfyuiInstallProgress: (callback: (data: { percent: number; status: string }) => void) => void
+  onComfyuiInstallLog: (callback: (data: { message: string }) => void) => void
+  onComfyuiInstallError: (callback: (data: { error: string }) => void) => void
+  onComfyuiInstallCancelled: (callback: (data: { message: string }) => void) => void
+  onComfyuiUninstallProgress: (callback: (data: { percent: number; status: string }) => void) => void
+  onComfyuiUninstallLog: (callback: (data: { message: string }) => void) => void
+  onComfyuiUninstallError: (callback: (data: { error: string }) => void) => void
+  removeComfyuiInstallListeners: () => void
+  removeComfyuiUninstallListeners: () => void
 }
 
 interface UpdateInfo {

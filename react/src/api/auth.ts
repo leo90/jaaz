@@ -90,15 +90,9 @@ export async function pollDeviceAuth(
 }
 
 export async function getAuthStatus(): Promise<AuthStatus> {
-  // Get auth status from local storage
-  const token = localStorage.getItem('jaaz_access_token')
-  const userInfo = localStorage.getItem('jaaz_user_info')
-
-  console.log('Getting auth status:', {
-    hasToken: !!token,
-    hasUserInfo: !!userInfo,
-    userInfo: userInfo ? JSON.parse(userInfo) : null,
-  })
+  // Get auth status from sessionStorage (reduces persistent exposure vs localStorage)
+  const token = sessionStorage.getItem('jaaz_access_token')
+  const userInfo = sessionStorage.getItem('jaaz_user_info')
 
   if (token && userInfo) {
     try {
@@ -106,8 +100,7 @@ export async function getAuthStatus(): Promise<AuthStatus> {
       const newToken = await refreshToken(token)
 
       // Save the new token
-      localStorage.setItem('jaaz_access_token', newToken)
-      console.log('Token refreshed successfully')
+      sessionStorage.setItem('jaaz_access_token', newToken)
 
       const authStatus = {
         status: 'logged_in' as const,
@@ -116,13 +109,10 @@ export async function getAuthStatus(): Promise<AuthStatus> {
       }
       return authStatus
     } catch (error) {
-      console.log('Token refresh failed:', error)
-
       // Only clear auth data if token is truly expired (401), not for network errors
       if (error instanceof Error && error.message === 'TOKEN_EXPIRED') {
-        console.log('Token expired, clearing auth data')
-        localStorage.removeItem('jaaz_access_token')
-        localStorage.removeItem('jaaz_user_info')
+        sessionStorage.removeItem('jaaz_access_token')
+        sessionStorage.removeItem('jaaz_user_info')
 
         // Clear jaaz provider api_key
         try {
@@ -140,9 +130,6 @@ export async function getAuthStatus(): Promise<AuthStatus> {
         return loggedOutStatus
       } else {
         // Network error or other issues, keep user logged in with old token
-        console.log(
-          'Network error during token refresh, keeping user logged in with existing token'
-        )
         const authStatus = {
           status: 'logged_in' as const,
           is_logged_in: true,
@@ -157,14 +144,13 @@ export async function getAuthStatus(): Promise<AuthStatus> {
     status: 'logged_out' as const,
     is_logged_in: false,
   }
-  console.log('Returning logged out status:', loggedOutStatus)
   return loggedOutStatus
 }
 
 export async function logout(): Promise<{ status: string; message: string }> {
-  // Clear local storage
-  localStorage.removeItem('jaaz_access_token')
-  localStorage.removeItem('jaaz_user_info')
+  // Clear sessionStorage
+  sessionStorage.removeItem('jaaz_access_token')
+  sessionStorage.removeItem('jaaz_user_info')
 
   // Clear jaaz provider api_key
   await clearJaazApiKey()
@@ -176,7 +162,7 @@ export async function logout(): Promise<{ status: string; message: string }> {
 }
 
 export async function getUserProfile(): Promise<UserInfo> {
-  const userInfo = localStorage.getItem('jaaz_user_info')
+  const userInfo = sessionStorage.getItem('jaaz_user_info')
   if (!userInfo) {
     throw new Error(i18n.t('common:auth.notLoggedIn'))
   }
@@ -184,15 +170,15 @@ export async function getUserProfile(): Promise<UserInfo> {
   return JSON.parse(userInfo)
 }
 
-// Helper function to save auth data to local storage
+// Helper function to save auth data to sessionStorage
 export function saveAuthData(token: string, userInfo: UserInfo) {
-  localStorage.setItem('jaaz_access_token', token)
-  localStorage.setItem('jaaz_user_info', JSON.stringify(userInfo))
+  sessionStorage.setItem('jaaz_access_token', token)
+  sessionStorage.setItem('jaaz_user_info', JSON.stringify(userInfo))
 }
 
 // Helper function to get access token
 export function getAccessToken(): string | null {
-  return localStorage.getItem('jaaz_access_token')
+  return sessionStorage.getItem('jaaz_access_token')
 }
 
 // Helper function to make authenticated API calls

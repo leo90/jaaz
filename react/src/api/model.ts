@@ -1,3 +1,5 @@
+import { apiFetch } from '@/api/fetchUtils'
+
 export type ModelInfo = {
   provider: string
   model: string
@@ -16,18 +18,20 @@ export async function listModels(): Promise<{
   llm: ModelInfo[]
   tools: ToolInfo[]
 }> {
-  const modelsResp = await fetch('/api/list_models')
-    .then((res) => res.json())
-    .catch((err) => {
-      console.error(err)
-      return []
-    })
-  const toolsResp = await fetch('/api/list_tools')
-    .then((res) => res.json())
-    .catch((err) => {
-      console.error(err)
-      return []
-    })
+  let modelsResp: ModelInfo[] = []
+  let toolsResp: ToolInfo[] = []
+
+  try {
+    modelsResp = await apiFetch<ModelInfo[]>('/api/list_models')
+  } catch (err) {
+    console.error('Failed to fetch models:', err)
+  }
+
+  try {
+    toolsResp = await apiFetch<ToolInfo[]>('/api/list_tools')
+  } catch (err) {
+    console.error('Failed to fetch tools:', err)
+  }
 
   return {
     llm: modelsResp,

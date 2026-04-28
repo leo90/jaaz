@@ -1,26 +1,24 @@
 import { LLMConfig } from '@/types/types'
+import { apiFetch } from '@/api/fetchUtils'
 
 export async function getConfigExists(): Promise<{ exists: boolean }> {
-  const response = await fetch('/api/config/exists')
-  return await response.json()
+  return apiFetch('/api/config/exists')
 }
 
 export async function getConfig(): Promise<{ [key: string]: LLMConfig }> {
-  const response = await fetch('/api/config')
-  return await response.json()
+  return apiFetch('/api/config')
 }
 
 export async function updateConfig(config: {
   [key: string]: LLMConfig
 }): Promise<{ status: string; message: string }> {
-  const response = await fetch('/api/config', {
+  return apiFetch('/api/config', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(config),
   })
-  return await response.json()
 }
 
 // Update jaaz provider api_key after login
@@ -33,7 +31,6 @@ export async function updateJaazApiKey(token: string): Promise<void> {
     }
 
     await updateConfig(config)
-    console.log('Successfully updated jaaz provider api_key')
   } catch (error) {
     console.error('Error updating jaaz provider api_key:', error)
   }
@@ -47,7 +44,6 @@ export async function clearJaazApiKey(): Promise<void> {
     if (config.jaaz) {
       config.jaaz.api_key = ''
       await updateConfig(config)
-      console.log('Successfully cleared jaaz provider api_key')
     }
   } catch (error) {
     console.error('Error clearing jaaz provider api_key:', error)

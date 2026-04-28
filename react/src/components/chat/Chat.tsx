@@ -10,7 +10,7 @@ import {
   PendingType,
   Session,
 } from '@/types/types'
-import { useSearch } from '@tanstack/react-router'
+import { useSearch, useNavigate } from '@tanstack/react-router'
 import { produce } from 'immer'
 import { motion } from 'motion/react'
 import { nanoid } from 'nanoid'
@@ -60,6 +60,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   sessionId: searchSessionId,
 }) => {
   const { t } = useTranslation()
+  const navigate = useNavigate()
   const [session, setSession] = useState<Session | null>(null)
   const { initCanvas, setInitCanvas } = useConfigs()
   const { authStatus } = useAuth()
@@ -533,11 +534,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const onSelectSession = (sessionId: string) => {
     setSession(sessionList.find((s) => s.id === sessionId) || null)
-    window.history.pushState(
-      {},
-      '',
-      `/canvas/${canvasId}?sessionId=${sessionId}`
-    )
+    navigate({ to: '/canvas/$canvasId', params: { canvasId }, search: { sessionId } })
   }
 
   const onClickNewChat = () => {
@@ -570,11 +567,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       })
 
       if (searchSessionId !== sessionId) {
-        window.history.pushState(
-          {},
-          '',
-          `/canvas/${canvasId}?sessionId=${sessionId}`
-        )
+        navigate({ to: '/canvas/$canvasId', params: { canvasId }, search: { sessionId } })
       }
 
       scrollToBottom()

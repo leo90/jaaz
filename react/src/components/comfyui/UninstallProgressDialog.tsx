@@ -70,9 +70,9 @@ const UninstallProgressDialog = ({ open, onOpenChange, onUninstallComplete, onCo
       return;
     }
 
-    // Listen for uninstallation progress events
-    const handleProgress = (event: CustomEvent<ProgressData>) => {
-      const { percent } = event.detail;
+    // Listen for uninstallation progress events via Electron IPC
+    const handleProgress = (data: ProgressData) => {
+      const { percent } = data;
       setProgress(percent);
 
       if (percent >= 100) {
@@ -84,8 +84,8 @@ const UninstallProgressDialog = ({ open, onOpenChange, onUninstallComplete, onCo
       }
     };
 
-    const handleLog = (event: CustomEvent<LogData>) => {
-      const { message } = event.detail;
+    const handleLog = (data: LogData) => {
+      const { message } = data;
       setLogs(prev => [...prev, message]);
 
       // Check for error messages
@@ -103,22 +103,19 @@ const UninstallProgressDialog = ({ open, onOpenChange, onUninstallComplete, onCo
       }
     };
 
-    const handleError = (event: CustomEvent<{ error: string }>) => {
-      const { error } = event.detail;
+    const handleError = (data: { error: string }) => {
+      const { error } = data;
       setHasError(true);
       setLogs(prev => [...prev, `Error: ${error}`]);
     };
 
-    // Add event listeners
-    window.addEventListener('comfyui-uninstall-progress', handleProgress as EventListener);
-    window.addEventListener('comfyui-uninstall-log', handleLog as EventListener);
-    window.addEventListener('comfyui-uninstall-error', handleError as EventListener);
+    // Register IPC listeners
+    window.electronAPI?.onComfyuiUninstallProgress?.(handleProgress);
+    window.electronAPI?.onComfyuiUninstallLog?.(handleLog);
+    window.electronAPI?.onComfyuiUninstallError?.(handleError);
 
     return () => {
-      // Remove event listeners
-      window.removeEventListener('comfyui-uninstall-progress', handleProgress as EventListener);
-      window.removeEventListener('comfyui-uninstall-log', handleLog as EventListener);
-      window.removeEventListener('comfyui-uninstall-error', handleError as EventListener);
+      window.electronAPI?.removeComfyuiUninstallListeners?.();
     };
   }, [open, onUninstallComplete, onOpenChange, isConfirming, t]);
 

@@ -66,9 +66,9 @@ const InstallProgressDialog = ({ open, onOpenChange, onInstallComplete }: Instal
       return;
     }
 
-    // Listen for installation progress events
-    const handleProgress = (event: CustomEvent<ProgressData>) => {
-      const { percent, status } = event.detail;
+    // Listen for installation progress events via Electron IPC
+    const handleProgress = (data: ProgressData) => {
+      const { percent, status } = data;
       setProgress(percent);
       setStatus(status);
 
@@ -81,8 +81,8 @@ const InstallProgressDialog = ({ open, onOpenChange, onInstallComplete }: Instal
       }
     };
 
-    const handleLog = (event: CustomEvent<LogData>) => {
-      const { message } = event.detail;
+    const handleLog = (data: LogData) => {
+      const { message } = data;
       setLogs(prev => [...prev, message]);
 
       // Check for error messages
@@ -91,33 +91,29 @@ const InstallProgressDialog = ({ open, onOpenChange, onInstallComplete }: Instal
       }
     };
 
-    const handleError = (event: CustomEvent<{ error: string }>) => {
-      const { error } = event.detail;
+    const handleError = (data: { error: string }) => {
+      const { error } = data;
       setHasError(true);
       setStatus(`Installation failed: ${error}`);
       setLogs(prev => [...prev, `Error: ${error}`]);
     };
 
-    const handleCancelled = (event: CustomEvent<{ message: string }>) => {
-      const { message } = event.detail;
+    const handleCancelled = (data: { message: string }) => {
+      const { message } = data;
       setIsCancelled(true);
       setIsCancelling(false);
       setStatus('Installation cancelled');
       setLogs(prev => [...prev, `Cancelled: ${message}`]);
     };
 
-    // Add event listeners
-    window.addEventListener('comfyui-install-progress', handleProgress as EventListener);
-    window.addEventListener('comfyui-install-log', handleLog as EventListener);
-    window.addEventListener('comfyui-install-error', handleError as EventListener);
-    window.addEventListener('comfyui-install-cancelled', handleCancelled as EventListener);
+    // Register IPC listeners
+    window.electronAPI?.onComfyuiInstallProgress?.(handleProgress);
+    window.electronAPI?.onComfyuiInstallLog?.(handleLog);
+    window.electronAPI?.onComfyuiInstallError?.(handleError);
+    window.electronAPI?.onComfyuiInstallCancelled?.(handleCancelled);
 
     return () => {
-      // Remove event listeners
-      window.removeEventListener('comfyui-install-progress', handleProgress as EventListener);
-      window.removeEventListener('comfyui-install-log', handleLog as EventListener);
-      window.removeEventListener('comfyui-install-error', handleError as EventListener);
-      window.removeEventListener('comfyui-install-cancelled', handleCancelled as EventListener);
+      window.electronAPI?.removeComfyuiInstallListeners?.();
     };
   }, [open, onInstallComplete, onOpenChange]);
 

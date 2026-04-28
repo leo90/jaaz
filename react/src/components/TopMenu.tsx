@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input'
 import { ChevronLeft, ImageIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useLocation } from '@tanstack/react-router'
 import { SettingsIcon } from 'lucide-react'
 import ThemeButton from '@/components/theme/ThemeButton'
 import { LOGO_URL } from '@/constants'
@@ -22,7 +22,9 @@ export default function TopMenu({
   const { t } = useTranslation()
 
   const navigate = useNavigate()
+  const location = useLocation()
   const { setShowSettingsDialog } = useConfigs()
+  const currentPath = location.pathname
 
   return (
     <motion.div
@@ -36,18 +38,18 @@ export default function TopMenu({
           className="flex items-center gap-2 cursor-pointer group"
           onClick={() => navigate({ to: '/' })}
         >
-          {window.location.pathname !== '/' && (
+          {currentPath !== '/' && (
             <ChevronLeft className="size-5 group-hover:-translate-x-0.5 transition-transform duration-300" />
           )}
           <img src={LOGO_URL} alt="logo" className="size-5" draggable={false} />
           <motion.div className="flex relative overflow-hidden items-start h-7 text-xl font-bold">
             <motion.span className="flex items-center" layout>
-              {window.location.pathname === '/' ? 'Jaaz' : t('canvas:back')}
+              {currentPath === '/' ? 'Jaaz' : t('canvas:back')}
             </motion.span>
           </motion.div>
         </motion.div>
         <Button
-          variant={window.location.pathname === '/assets' ? 'default' : 'ghost'}
+          variant={currentPath === '/assets' ? 'default' : 'ghost'}
           size="sm"
           className={cn('flex items-center font-bold rounded-none')}
           onClick={() => navigate({ to: '/assets' })}

@@ -44,4 +44,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeUpdateDownloadedListener: () => {
     ipcRenderer.removeAllListeners('update-downloaded')
   },
+  // Listen for ComfyUI install/uninstall events (replaces CustomEvent dispatch)
+  onComfyuiInstallProgress: (callback) => {
+    ipcRenderer.on('comfyui-install-progress', (event, data) => callback(data))
+  },
+  onComfyuiInstallLog: (callback) => {
+    ipcRenderer.on('comfyui-install-log', (event, data) => callback(data))
+  },
+  onComfyuiInstallError: (callback) => {
+    ipcRenderer.on('comfyui-install-error', (event, data) => callback(data))
+  },
+  onComfyuiInstallCancelled: (callback) => {
+    ipcRenderer.on('comfyui-install-cancelled', (event, data) => callback(data))
+  },
+  onComfyuiUninstallProgress: (callback) => {
+    ipcRenderer.on('comfyui-uninstall-progress', (event, data) => callback(data))
+  },
+  onComfyuiUninstallLog: (callback) => {
+    ipcRenderer.on('comfyui-uninstall-log', (event, data) => callback(data))
+  },
+  onComfyuiUninstallError: (callback) => {
+    ipcRenderer.on('comfyui-uninstall-error', (event, data) => callback(data))
+  },
+  removeComfyuiInstallListeners: () => {
+    ipcRenderer.removeAllListeners('comfyui-install-progress')
+    ipcRenderer.removeAllListeners('comfyui-install-log')
+    ipcRenderer.removeAllListeners('comfyui-install-error')
+    ipcRenderer.removeAllListeners('comfyui-install-cancelled')
+  },
+  removeComfyuiUninstallListeners: () => {
+    ipcRenderer.removeAllListeners('comfyui-uninstall-progress')
+    ipcRenderer.removeAllListeners('comfyui-uninstall-log')
+    ipcRenderer.removeAllListeners('comfyui-uninstall-error')
+  },
 })

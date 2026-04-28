@@ -11,18 +11,45 @@ import io
 
 router = APIRouter(prefix="/api")
 
-WORKSPACE_ROOT = os.path.join(USER_DATA_DIR, "workspace")
+WORKSPACE_ROOT = os.path.realpath(os.path.join(USER_DATA_DIR, "workspace"))
+
+# Allowed root directories for filesystem browsing (prevents accessing arbitrary system paths)
+_ALLOWED_FS_ROOTS = [
+    os.path.realpath(USER_DATA_DIR),
+    os.path.realpath(os.path.expanduser("~")),
+]
+
+
+def _safe_path(rel_path: str) -> str:
+    """Resolve a relative path and ensure it stays within WORKSPACE_ROOT.
+    Raises HTTPException if path traversal is detected."""
+    # Normalize the workspace root and the resolved path
+    resolved = os.path.realpath(os.path.join(WORKSPACE_ROOT, rel_path))
+    if not resolved.startswith(WORKSPACE_ROOT + os.sep) and resolved != WORKSPACE_ROOT:
+        raise HTTPException(status_code=403, detail="Path traversal not allowed")
+    return resolved
+
+
+def _validate_fs_path(abs_path: str) -> str:
+    """Validate an absolute path is within allowed filesystem roots.
+    Raises HTTPException if path is outside allowed directories."""
+    resolved = os.path.realpath(abs_path)
+    if not any(resolved.startswith(root + os.sep) or resolved == root for root in _ALLOWED_FS_ROOTS):
+        raise HTTPException(status_code=403, detail="Access to this path is not allowed")
+    return resolved
 
 @router.post("/update_file")
 async def update_file(request: Request):
     try:
         data = await request.json()
         path = data["path"]
-        full_path = os.path.join(WORKSPACE_ROOT, path)
+        full_path = _safe_path(path)
         content = data["content"]
         with open(full_path, "w") as f:
             f.write(content)
         return {"success": True}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"error": str(e), "path": path}
 
@@ -30,7 +57,7 @@ async def update_file(request: Request):
 async def create_file(request: Request):
     data = await request.json()
     rel_dir = data["rel_dir"]
-    path = os.path.join(WORKSPACE_ROOT, rel_dir, 'Untitled.md')
+    path = _safe_path(os.path.join(rel_dir, 'Untitled.md'))
     # Split the path into directory, filename, and extension
     dir_name, base_name = os.path.split(path)
     name, ext = os.path.splitext(base_name)
@@ -50,24 +77,36 @@ async def create_file(request: Request):
 
 @router.post("/delete_file")
 async def delete_file(request: Request):
-    data = await request.json()
-    path = data["path"]
-    os.remove(path)
-    return {"success": True}
+    try:
+        data = await request.json()
+        path = data["path"]
+        full_path = _safe_path(path)
+        os.remove(full_path)
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": str(e), "path": path}
 
 @router.post("/rename_file")
 async def rename_file(request: Request):
     try:
         data = await request.json()
         old_path = data["old_path"]
-        old_path = os.path.join(WORKSPACE_ROOT, old_path)
         new_title = data["new_title"]
-        if os.path.exists(old_path):
-            new_path = os.path.join(os.path.dirname(old_path), new_title)
-            os.rename(old_path, new_path)
-            return {"success": True, "path": new_path}
+        old_full = _safe_path(old_path)
+        if os.path.exists(old_full):
+            new_full = os.path.join(os.path.dirname(old_full), new_title)
+            # Ensure renamed path also stays within workspace
+            new_real = os.path.realpath(new_full)
+            if not new_real.startswith(WORKSPACE_ROOT + os.sep) and new_real != WORKSPACE_ROOT:
+                raise HTTPException(status_code=403, detail="Path traversal not allowed")
+            os.rename(old_full, new_full)
+            return {"success": True, "path": os.path.relpath(new_full, WORKSPACE_ROOT)}
         else:
-            return {"error": f"File {old_path} does not exist", "path": old_path}
+            return {"error": f"File does not exist", "path": old_path}
+    except HTTPException:
+        raise
     except Exception as e:
         traceback.print_exc()
         return {"error": str(e)}
@@ -77,20 +116,22 @@ async def read_file(request: Request):
     try:
         data = await request.json()
         path = data["path"]
-        full_path = os.path.join(WORKSPACE_ROOT, path)
+        full_path = _safe_path(path)
         if os.path.exists(full_path):
             with open(full_path, "r") as f:
                 content = f.read()
                 return {"content": content}
         else:
             return {"error": f"File {path} does not exist", "path": path}
+    except HTTPException:
+        raise
     except Exception as e:
         return {"error": str(e), "path": path}
 
 @router.get("/list_files_in_dir")
 async def list_files_in_dir(rel_path: str):
     try:
-        full_path = os.path.join(WORKSPACE_ROOT, rel_path)
+        full_path = _safe_path(rel_path)
         files = os.listdir(full_path)
         file_nodes = []
         for file in files:
@@ -112,44 +153,35 @@ async def list_files_in_dir(rel_path: str):
 
 @router.post("/open_folder_in_explorer")
 async def open_folder_in_explorer(request: Request):
-    """
-    在系统文件浏览器中打开指定文件夹
-    
-    Args:
-        request: 包含文件夹路径的请求
-    
-    Returns:
-        操作结果
-    """
     try:
         data = await request.json()
         folder_path = data.get("path")
-        
+
         if not folder_path:
             raise HTTPException(status_code=400, detail="Missing folder path")
-        
-        # 验证路径是否存在且为文件夹
+
+        # Validate path is within allowed roots
+        folder_path = _validate_fs_path(folder_path)
+
+        # Verify it exists and is a directory
         if not os.path.exists(folder_path):
             raise HTTPException(status_code=404, detail="Folder not found")
-        
+
         if not os.path.isdir(folder_path):
             raise HTTPException(status_code=400, detail="Path is not a directory")
-        
-        # 根据不同操作系统打开文件管理器
+
+        # Open in system file manager (using list form to prevent command injection)
         system = platform.system()
-        
+
         if system == "Windows":
-            # Windows
             subprocess.run(["explorer", folder_path], check=True)
         elif system == "Darwin":
-            # macOS
             subprocess.run(["open", folder_path], check=True)
         elif system == "Linux":
-            # Linux
             subprocess.run(["xdg-open", folder_path], check=True)
         else:
             raise HTTPException(status_code=500, detail=f"Unsupported operating system: {system}")
-        
+
         return {"success": True, "message": "Folder opened in system explorer"}
         
     except subprocess.CalledProcessError as e:
@@ -160,24 +192,18 @@ async def open_folder_in_explorer(request: Request):
 
 @router.get("/browse_filesystem")
 async def browse_filesystem(path: str = ""):
-    """
-    浏览电脑任意位置的文件系统
-    
-    Args:
-        path: 要浏览的路径，如果为空则从用户家目录开始
-    
-    Returns:
-        包含文件夹和文件信息的列表
-    """
     try:
-        # 如果path为空，从用户家目录开始
+        # Default to user home if no path provided
         if not path:
             path = os.path.expanduser("~")
-        
-        # 确保路径存在且可访问
+
+        # Validate path is within allowed roots
+        path = _validate_fs_path(path)
+
+        # Ensure path exists and is a directory
         if not os.path.exists(path):
             raise HTTPException(status_code=404, detail="Path not found")
-        
+
         if not os.path.isdir(path):
             raise HTTPException(status_code=400, detail="Path is not a directory")
         
@@ -243,16 +269,10 @@ async def browse_filesystem(path: str = ""):
 
 @router.get("/get_media_files")
 async def get_media_files(path: str):
-    """
-    获取指定文件夹下的所有媒体文件（图片和视频）
-    
-    Args:
-        path: 文件夹路径
-    
-    Returns:
-        媒体文件列表
-    """
     try:
+        # Validate path is within allowed roots
+        path = _validate_fs_path(path)
+
         if not os.path.exists(path) or not os.path.isdir(path):
             raise HTTPException(status_code=400, detail="Invalid directory path")
         
@@ -290,16 +310,10 @@ async def get_media_files(path: str):
 
 @router.get("/get_file_thumbnail")
 async def get_file_thumbnail(file_path: str):
-    """
-    获取文件的缩略图信息
-    
-    Args:
-        file_path: 文件路径
-    
-    Returns:
-        缩略图信息或文件信息
-    """
     try:
+        # Validate path is within allowed roots
+        file_path = _validate_fs_path(file_path)
+
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
         
@@ -354,16 +368,10 @@ def get_file_type(file_path: str) -> str:
 
 @router.get("/serve_file")
 async def serve_file(file_path: str):
-    """
-    提供文件内容服务，用于在浏览器中预览图片和视频
-    
-    Args:
-        file_path: 文件路径
-    
-    Returns:
-        文件内容
-    """
     try:
+        # Validate path is within allowed roots
+        file_path = _validate_fs_path(file_path)
+
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
         
@@ -392,16 +400,10 @@ async def serve_file(file_path: str):
 
 @router.get("/get_file_info")
 async def get_file_info(file_path: str):
-    """
-    获取文件详细信息
-    
-    Args:
-        file_path: 文件路径
-    
-    Returns:
-        文件详细信息
-    """
     try:
+        # Validate path is within allowed roots
+        file_path = _validate_fs_path(file_path)
+
         if not os.path.exists(file_path):
             raise HTTPException(status_code=404, detail="File not found")
         

@@ -418,11 +418,17 @@ const CanvasExcali: React.FC<CanvasExcaliProps> = ({
         return data || null
       }}
       renderEmbeddable={renderEmbeddable}
-      // Allow all URLs for embeddable content
       validateEmbeddable={(url: string) => {
-        console.log('👇 Validating embeddable URL:', url)
-        // Allow all URLs - return true for everything
-        return true
+        try {
+          const parsed = new URL(url)
+          // Only allow http/https to prevent file:// and custom protocol abuse
+          if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            return false
+          }
+          return true
+        } catch {
+          return false
+        }
       }}
       // Ensure interactive mode is enabled
       viewModeEnabled={false}
