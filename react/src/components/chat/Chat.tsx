@@ -139,6 +139,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         return
       }
 
+      // Filter out garbage content - only quotes, spaces, or empty strings
+      const text = data.text
+      if (!text) return
+
+      const trimmed = text.trim()
+      if (!trimmed) return
+
+      // Skip content that's only quotes, spaces, brackets, etc.
+      if (trimmed.length < 3 && /^["'`\s\[\]\{\}\(\)]+$/.test(trimmed)) {
+        return
+      }
+
       setPending('text')
       setMessages(
         produce((prev) => {
@@ -149,18 +161,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             last.tool_calls == null
           ) {
             if (typeof last.content === 'string') {
-              last.content += data.text
+              last.content += text
             } else if (
               last.content &&
               last.content.at(-1) &&
               last.content.at(-1)!.type === 'text'
             ) {
-              ;(last.content.at(-1) as { text: string }).text += data.text
+              ;(last.content.at(-1) as { text: string }).text += text
             }
           } else {
             prev.push({
               role: 'assistant',
-              content: data.text,
+              content: text,
             })
           }
         })

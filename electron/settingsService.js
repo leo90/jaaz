@@ -139,12 +139,18 @@ class SettingsService {
 
       this.setEnvironment(url)
 
+      // Build no_proxy string
+      const noProxyList = currentProxy.noProxy || []
+      const noProxy = noProxyList.join(',')
+
       return {
         grpc_proxy: url,
         HTTP_PROXY: url,
         HTTPS_PROXY: url,
         http_proxy: url,
         https_proxy: url,
+        NO_PROXY: noProxy,
+        no_proxy: noProxy,
       }
     } catch (error) {
       console.error('Failed to set system proxy:', error)
@@ -170,12 +176,19 @@ class SettingsService {
       // 设置环境变量
       this.setEnvironment(proxyUrl)
 
+      // Always add localhost to no_proxy for custom proxy
+      const defaultNoProxy = 'localhost,127.0.0.1,::1'
+      process.env.NO_PROXY = defaultNoProxy
+      process.env.no_proxy = defaultNoProxy
+
       return {
         grpc_proxy: proxyUrl,
         HTTP_PROXY: proxyUrl,
         HTTPS_PROXY: proxyUrl,
         http_proxy: proxyUrl,
         https_proxy: proxyUrl,
+        NO_PROXY: defaultNoProxy,
+        no_proxy: defaultNoProxy,
       }
     } catch (error) {
       console.error('Failed to set custom proxy:', error)
@@ -200,6 +213,8 @@ class SettingsService {
       delete process.env.HTTPS_PROXY
       delete process.env.http_proxy
       delete process.env.https_proxy
+      delete process.env.NO_PROXY
+      delete process.env.no_proxy
 
       return {}
     } catch (error) {

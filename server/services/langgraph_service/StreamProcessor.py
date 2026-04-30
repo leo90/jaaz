@@ -78,7 +78,6 @@ class StreamProcessor:
 
     async def _handle_message_chunk(self, ai_message_chunk: AIMessageChunk) -> None:
         """处理消息类型的 chunk"""
-        # print('👇ai_message_chunk', ai_message_chunk)
         try:
             content = ai_message_chunk.content
 
@@ -92,10 +91,33 @@ class StreamProcessor:
                     'message': oai_message
                 })
             elif content:
-                # 发送文本内容
+                # 🔍 DEBUG: 打印原始 content 内容
+                if isinstance(content, str):
+                    if any(c in content for c in '"\'`'):
+                        print(f'🐛 DEBUG: raw content (type=str, len={len(content)}): {repr(content)}')
+                else:
+                    print(f'🐛 DEBUG: raw content (type={type(content).__name__}): {repr(content)}')
+
+                # 处理 content - 可能是字符串或复杂对象（Qwen 模型的 reasoning content）
+                text_content = ''
+                if isinstance(content, str):
+                    text_content = content
+                elif isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, dict) and 'text' in item:
+                            text_content += item['text']
+                        elif isinstance(item, str):
+                            text_content += item
+                elif isinstance(content, dict) and 'text' in content:
+                    text_content = content['text']
+
+                # 🔍 DEBUG: 打印处理后的 text_content
+                if text_content and any(c in text_content for c in '"\'`'):
+                    print(f'🐛 DEBUG: processed text_content: {repr(text_content)}')
+
                 await self.websocket_service(self.session_id, {
                     'type': 'delta',
-                    'text': content
+                    'text': text_content
                 })
             elif hasattr(ai_message_chunk, 'tool_calls') and ai_message_chunk.tool_calls and ai_message_chunk.tool_calls[0].get('name'):
                 # 处理工具调用

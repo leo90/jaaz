@@ -59,6 +59,11 @@ DEFAULT_PROVIDERS_CONFIG: AppConfig = {
         'api_key': '',
         'max_tokens': 8192,
     },
+    'grsai': {
+        'models': {},
+        'url': 'https://grsai.dakka.com.cn',
+        'api_key': '',
+    },
 
 }
 
@@ -99,8 +104,11 @@ class ConfigService:
         self.initialized = False
 
     def _get_jaaz_url(self) -> str:
-        """Get the correct jaaz URL"""
-        return os.getenv('BASE_API_URL', 'https://jaaz.app').rstrip('/') + '/api/v1/'
+        """Get the correct jaaz URL
+        Note: BASE_API_URL is for frontend -> backend communication,
+        not for backend -> LLM API calls. Always use the real Jaaz API URL.
+        """
+        return 'https://jaaz.app'.rstrip('/') + '/api/v1/'
 
     async def initialize(self) -> None:
         try:

@@ -29,6 +29,19 @@ async def get_config():
 @router.post("")
 async def update_config(request: Request):
     data = await request.json()
+
+    # Fix: Don't save masked API keys back to config.
+    # If the API key ends with '****', keep the original value.
+    current_config = config_service.app_config
+    for provider, provider_config in data.items():
+        if isinstance(provider_config, dict) and 'api_key' in provider_config:
+            new_key = provider_config['api_key']
+            if isinstance(new_key, str) and new_key.endswith('****'):
+                # This is a masked value, restore original key
+                original = current_config.get(provider, {}).get('api_key', '')
+                if original:
+                    provider_config['api_key'] = original
+
     res = await config_service.update_config(data)
 
     # 每次更新配置后，重新初始化工具

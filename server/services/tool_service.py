@@ -51,6 +51,10 @@ from tools.generate_image_by_recraft_v3_replicate import (
 from tools.generate_video_by_hailuo_02_jaaz import generate_video_by_hailuo_02_jaaz
 from tools.generate_video_by_veo3_fast_jaaz import generate_video_by_veo3_fast_jaaz
 from tools.generate_image_by_midjourney_jaaz import generate_image_by_midjourney_jaaz
+from tools.generate_image_by_nano_banana_2_grsai import generate_image_by_nano_banana_2_grsai
+from tools.generate_image_by_nano_banana_2_cl_grsai import generate_image_by_nano_banana_2_cl_grsai
+from tools.generate_image_by_nano_banana_pro_grsai import generate_image_by_nano_banana_pro_grsai
+from tools.generate_image_by_nano_banana_pro_cl_grsai import generate_image_by_nano_banana_pro_cl_grsai
 from services.config_service import config_service
 from services.db_service import db_service
 
@@ -189,6 +193,33 @@ TOOL_MAPPING: Dict[str, ToolInfo] = {
         "type": "image",
         "provider": "replicate",
         "tool_function": generate_image_by_flux_kontext_max_replicate,
+    },
+    # ---------------
+    # GRSAI Tools
+    # ---------------
+    "generate_image_by_nano_banana_2_grsai": {
+        "display_name": "Nano Banana 2",
+        "type": "image",
+        "provider": "grsai",
+        "tool_function": generate_image_by_nano_banana_2_grsai,
+    },
+    "generate_image_by_nano_banana_2_cl_grsai": {
+        "display_name": "Nano Banana 2 CL",
+        "type": "image",
+        "provider": "grsai",
+        "tool_function": generate_image_by_nano_banana_2_cl_grsai,
+    },
+    "generate_image_by_nano_banana_pro_grsai": {
+        "display_name": "Nano Banana Pro",
+        "type": "image",
+        "provider": "grsai",
+        "tool_function": generate_image_by_nano_banana_pro_grsai,
+    },
+    "generate_image_by_nano_banana_pro_cl_grsai": {
+        "display_name": "Nano Banana Pro CL",
+        "type": "image",
+        "provider": "grsai",
+        "tool_function": generate_image_by_nano_banana_pro_cl_grsai,
     },
 }
 

@@ -169,12 +169,17 @@ def _create_text_model(text_model: ModelInfo) -> Any:
 
 async def _handle_error(error: Exception, session_id: str) -> None:
     """处理错误"""
-    print('Error in langgraph_agent', error)
+    error_type = type(error).__name__
+    error_msg = str(error)
+    print(f'Error in langgraph_agent: {error_type}: {error_msg}')
     tb_str = traceback.format_exc()
     print(f"Full traceback:\n{tb_str}")
     traceback.print_exc()
 
+    # Include error type in the message for better debugging
+    display_error = f"{error_type}: {error_msg}" if error_msg != error_type else error_msg
+
     await send_to_websocket(session_id, cast(Dict[str, Any], {
         'type': 'error',
-        'error': str(error)
+        'error': display_error
     }))

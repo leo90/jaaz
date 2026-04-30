@@ -56,6 +56,16 @@ const PROVIDER_OPTIONS = [
     },
   },
   {
+    value: 'grsai',
+    label: 'GRSAI (Nano Banana)',
+    mediaOnly: true,
+    data: {
+      apiUrl: 'https://grsai.dakka.com.cn',
+      models: {},
+      api_key: '',
+    },
+  },
+  {
     value: 'replicate',
     label: 'Replicate',
     mediaOnly: true,
