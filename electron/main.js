@@ -309,12 +309,18 @@ const startPythonApi = async () => {
   return pyPort
 }
 
-// Validate IPC origin helper
+// Validate IPC origin helper — SECURITY CRITICAL
 function validateIpcOrigin(event) {
   const origin = event.senderFrame.origin
-  const isAllowed = Array.from(ALLOWED_IPC_ORIGINS).some(allowed =>
-    origin === allowed || origin.startsWith(allowed)
-  )
+  const isAllowed = Array.from(ALLOWED_IPC_ORIGINS).some(allowed => {
+    // Exact match first
+    if (origin === allowed) return true
+    // Prefix match with trailing slash protection — prevents localhost.attacker.com bypass
+    if (origin.startsWith(allowed + '/')) return true
+    // Handle file:// protocol specially — must be exactly 'file://'
+    if (allowed === 'file://' && origin === 'file://') return true
+    return false
+  })
   if (!isAllowed) {
     console.error(`IPC call from unauthorized origin: ${origin}`)
     throw new Error(`IPC call from unauthorized origin: ${origin}`)
@@ -377,14 +383,7 @@ const ALLOWED_IPC_ORIGINS = new Set([
 for (const [channel, handler] of Object.entries(ipcHandlers)) {
   ipcMain.handle(channel, (event, ...args) => {
     // Validate IPC origin — reject calls from unauthorized frames
-    const origin = event.senderFrame.origin
-    const isAllowed = Array.from(ALLOWED_IPC_ORIGINS).some(allowed =>
-      origin === allowed || origin.startsWith(allowed)
-    )
-    if (!isAllowed) {
-      console.error(`IPC call from unauthorized origin: ${origin} on channel: ${channel}`)
-      throw new Error(`IPC call from unauthorized origin: ${origin}`)
-    }
+    validateIpcOrigin(event)
     return handler(event, ...args)
   })
 }
@@ -408,9 +407,40 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     // Register custom protocol for local file access (replaces webSecurity:false)
     protocol.handle('local-file', (request) => {
-      const filePath = decodeURIComponent(request.url.replace('local-file://', ''))
       const { net: electronNet } = require('electron')
-      return electronNet.fetch(`file://${filePath}`)
+      try {
+        // SECURITY: Remove protocol and normalize path to prevent traversal attacks
+        let filePath = decodeURIComponent(request.url.replace(/^local-file:\/*/, ''))
+
+        // Block Windows UNC paths (\\server\share or //server/share)
+        if (filePath.match(/^[\\/]{2}[^\\/]/)) {
+          console.error('Blocked UNC path in local-file protocol:', filePath)
+          return new Response(null, { status: 403, statusText: 'Forbidden' })
+        }
+
+        // SECURITY: Normalize path to resolve '..' and prevent traversal
+        filePath = path.normalize(filePath)
+
+        // On Windows, block attempts to access other drives (e.g., D:\)
+        // For app files, they should be within the app's own directories
+        if (process.platform === 'win32') {
+          // Convert to absolute if relative (shouldn't happen but defense in depth)
+          if (!path.isAbsolute(filePath)) {
+            filePath = path.resolve('/', filePath)
+          }
+          // Validate it's a local path - no UNC, no drive jumping
+          const pathRoot = path.parse(filePath).root
+          if (pathRoot.match(/^[\\/]{2}/)) {
+            console.error('Blocked UNC path:', filePath)
+            return new Response(null, { status: 403, statusText: 'Forbidden' })
+          }
+        }
+
+        return electronNet.fetch(`file://${filePath}`)
+      } catch (error) {
+        console.error('Error in local-file protocol:', error)
+        return new Response(null, { status: 500, statusText: 'Internal Server Error' })
+      }
     })
 
     // Initialize proxy settings for Electron sessions

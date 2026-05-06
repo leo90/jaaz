@@ -20,11 +20,34 @@ class ContextInfo(TypedDict):
     model_info: Dict[str, List[ModelInfo]]
 
 
+# 存储每个session的参考图片（用于在生图工具中自动注入）
+_session_input_images: Dict[str, List[str]] = {}
+
+
+def get_session_input_images(session_id: str) -> List[str]:
+    """获取指定session的参考图片"""
+    return _session_input_images.get(session_id, [])
+
+
+def set_session_input_images(session_id: str, images: List[str]) -> None:
+    """设置指定session的参考图片"""
+    _session_input_images[session_id] = images
+
+
+def clear_session_input_images(session_id: str) -> None:
+    """清除指定session的参考图片"""
+    _session_input_images.pop(session_id, None)
+
+
 def _fix_chat_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """修复聊天历史中不完整的工具调用
+    """修复聊天历史中不完整的工具调用，并提取参考图片
 
     根据LangGraph文档建议，移除没有对应ToolMessage的tool_calls
     参考: https://langchain-ai.github.io/langgraph/troubleshooting/errors/INVALID_CHAT_HISTORY/
+
+    新增功能：
+    - 从用户消息中提取参考图片，不传给LLM（避免非VLM模型报错）
+    - 把图片URL保存到session上下文中，供生图工具自动使用
     """
     if not messages:
         return messages
@@ -39,8 +62,47 @@ def _fix_chat_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if tool_call_id:
                 tool_call_ids.add(tool_call_id)
 
-    # 第二遍：修复AIMessage中的tool_calls
+    # 第二遍：修复AIMessage中的tool_calls，并提取用户消息中的图片
+    collected_image_urls: List[str] = []
+    session_id = None
+
     for msg in messages:
+        # 提取用户消息中的图片
+        if msg.get('role') == 'user':
+            content = msg.get('content', '')
+            # 如果content是混合内容（包含图片）
+            if isinstance(content, list):
+                text_parts: List[str] = []
+                image_count = 0
+
+                for part in content:
+                    if isinstance(part, dict):
+                        if part.get('type') == 'text':
+                            text_parts.append(part.get('text', ''))
+                        elif part.get('type') == 'image_url':
+                            image_url = part.get('image_url', {}).get('url', '')
+                            if image_url:
+                                collected_image_urls.append(image_url)
+                                image_count += 1
+
+                # 重建纯文本消息内容
+                if text_parts:
+                    msg_copy = msg.copy()
+                    # 如果有图片，在文本中提示LLM（但不传递图片本身）
+                    if image_count > 0:
+                        text_with_note = '\n\n'.join(text_parts) + \
+                            f'\n\n[注：用户上传了 {image_count} 张参考图片，调用生图工具时会自动添加到参数中]'
+                        msg_copy['content'] = text_with_note
+                    else:
+                        msg_copy['content'] = '\n\n'.join(text_parts)
+                    fixed_messages.append(msg_copy)
+                else:
+                    # 只有图片没有文本，发送一条简单消息
+                    msg_copy = msg.copy()
+                    msg_copy['content'] = f'[用户上传了 {image_count} 张参考图片，请使用生图工具处理]'
+                    fixed_messages.append(msg_copy)
+                continue
+
         if msg.get('role') == 'assistant' and msg.get('tool_calls'):
             # 过滤掉没有对应ToolMessage的tool_calls
             valid_tool_calls: List[Dict[str, Any]] = []
@@ -69,10 +131,10 @@ def _fix_chat_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 fixed_messages.append(msg_copy)
             # 如果既没有有效tool_calls也没有content，跳过这条消息
         else:
-            # 非assistant消息或没有tool_calls的消息直接保留
+            # 其他消息直接保留
             fixed_messages.append(msg)
 
-    return fixed_messages
+    return fixed_messages, collected_image_urls
 
 
 async def langgraph_multi_agent(
@@ -94,8 +156,13 @@ async def langgraph_multi_agent(
         system_prompt: 系统提示词
     """
     try:
-        # 0. 修复消息历史
-        fixed_messages = _fix_chat_history(messages)
+        # 0. 修复消息历史，并提取参考图片
+        fixed_messages, input_images = _fix_chat_history(messages)
+
+        # 保存参考图片到session上下文，供生图工具使用
+        set_session_input_images(session_id, input_images)
+        if input_images:
+            print(f"📸 保存了 {len(input_images)} 张参考图片到session上下文")
 
         # 2. 文本模型
         text_model_instance = _create_text_model(text_model)
@@ -133,6 +200,9 @@ async def langgraph_multi_agent(
 
     except Exception as e:
         await _handle_error(e, session_id)
+    finally:
+        # 清理session参考图片
+        clear_session_input_images(session_id)
 
 
 def _create_text_model(text_model: ModelInfo) -> Any:

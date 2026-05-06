@@ -37,6 +37,9 @@ from pydantic import BaseModel
 
 # Allowed hosts for ComfyUI proxy (SSRF protection)
 _ALLOWED_PROXY_HOSTS = {"localhost", "127.0.0.1", "::1"}
+# Allowed ports for ComfyUI proxy - prevent SSRF to other services
+# Default ComfyUI port is 8188, allow 8188-8200 range for multiple local instances
+_ALLOWED_PROXY_PORTS = {8188, 8189, 8190, 8191, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200}
 
 # 创建设置相关的路由器，所有端点都以 /api/settings 为前缀
 router = APIRouter(prefix="/api/settings")
@@ -292,6 +295,14 @@ async def comfyui_proxy(request: Request):
         if parsed.hostname not in _ALLOWED_PROXY_HOSTS:
             raise HTTPException(
                 status_code=403, detail="Only localhost addresses are allowed for proxy")
+
+        # SECURITY: Restrict ports to prevent SSRF to other local services
+        port = parsed.port or (80 if parsed.scheme == "http" else 443)
+        if port not in _ALLOWED_PROXY_PORTS:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Proxy port {port} not allowed. Only ports 8188-8200 are permitted for local ComfyUI instances"
+            )
 
         # Only allow http/https schemes
         if parsed.scheme not in ("http", "https"):

@@ -15,6 +15,13 @@ from .video_canvas_utils import (
     process_video_result,
 )
 
+# 导入session参考图片管理函数
+try:
+    from services.langgraph_service.agent_service import get_session_input_images
+except ImportError:
+    def get_session_input_images(session_id: str) -> list[str]:
+        return []
+
 
 async def generate_video_with_provider(
     prompt: str,
@@ -81,12 +88,20 @@ async def generate_video_with_provider(
             f"Starting video generation using {model_name} via {provider_name}..."
         )
 
+        # 如果没有显式传入图片，尝试从session上下文中获取
+        final_input_images: Optional[list[str]] = input_images
+        if not final_input_images and session_id:
+            session_images = get_session_input_images(session_id)
+            if session_images:
+                print(f"📸 从session上下文自动注入 {len(session_images)} 张参考图片到视频生成工具")
+                final_input_images = session_images
+
         # Process input images for the provider
         processed_input_images = None
-        if input_images:
+        if final_input_images:
             # For some providers, we might need to process input images differently
             # For now, just pass them as is
-            processed_input_images = input_images
+            processed_input_images = final_input_images
 
         # Generate video using the selected provider
         video_url = await provider_instance.generate(

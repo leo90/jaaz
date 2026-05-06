@@ -1,5 +1,5 @@
 # type: ignore[import]
-import traceback
+import logging
 from typing import Optional, List, Dict, Any, Callable, Awaitable
 from langchain_core.messages import AIMessageChunk, ToolCall, convert_to_openai_messages, ToolMessage
 from langgraph.graph import StateGraph
@@ -84,20 +84,12 @@ class StreamProcessor:
             if isinstance(ai_message_chunk, ToolMessage):
                 # 工具调用结果之后会在 values 类型中发送到前端，这里会更快出现一些
                 oai_message = convert_to_openai_messages([ai_message_chunk])[0]
-                print('👇toolcall res oai_message', oai_message)
                 await self.websocket_service(self.session_id, {
                     'type': 'tool_call_result',
                     'id': ai_message_chunk.tool_call_id,
                     'message': oai_message
                 })
             elif content:
-                # 🔍 DEBUG: 打印原始 content 内容
-                if isinstance(content, str):
-                    if any(c in content for c in '"\'`'):
-                        print(f'🐛 DEBUG: raw content (type=str, len={len(content)}): {repr(content)}')
-                else:
-                    print(f'🐛 DEBUG: raw content (type={type(content).__name__}): {repr(content)}')
-
                 # 处理 content - 可能是字符串或复杂对象（Qwen 模型的 reasoning content）
                 text_content = ''
                 if isinstance(content, str):
@@ -111,10 +103,6 @@ class StreamProcessor:
                 elif isinstance(content, dict) and 'text' in content:
                     text_content = content['text']
 
-                # 🔍 DEBUG: 打印处理后的 text_content
-                if text_content and any(c in text_content for c in '"\'`'):
-                    print(f'🐛 DEBUG: processed text_content: {repr(text_content)}')
-
                 await self.websocket_service(self.session_id, {
                     'type': 'delta',
                     'text': text_content
@@ -127,13 +115,11 @@ class StreamProcessor:
             if hasattr(ai_message_chunk, 'tool_call_chunks'):
                 await self._handle_tool_call_chunks(ai_message_chunk.tool_call_chunks)
         except Exception as e:
-            print('🟠error', e)
-            traceback.print_stack()
+            logging.error(f'StreamProcessor error: {e}', exc_info=True)
 
     async def _handle_tool_calls(self, tool_calls: List[ToolCall]) -> None:
         """处理工具调用"""
         self.tool_calls = [tc for tc in tool_calls if tc.get('name')]
-        print('😘tool_call event', tool_calls)
 
         # 需要确认的工具列表
         TOOLS_REQUIRING_CONFIRMATION = {
@@ -152,8 +138,7 @@ class StreamProcessor:
             # 检查是否需要确认
             if tool_name in TOOLS_REQUIRING_CONFIRMATION:
                 # 对于需要确认的工具，不在这里发送事件，让工具函数自己处理
-                print(
-                    f'🔄 Tool {tool_name} requires confirmation, skipping StreamProcessor event')
+                logging.debug(f'Tool {tool_name} requires confirmation, skipping StreamProcessor event')
                 continue
             else:
                 await self.websocket_service(self.session_id, {
@@ -177,4 +162,4 @@ class StreamProcessor:
                         'text': tool_call_chunk.get('args')
                     })
                 else:
-                    print('🟠no last_streaming_tool_call_id', tool_call_chunk)
+                    logging.warning(f'No last_streaming_tool_call_id for chunk: {tool_call_chunk}')

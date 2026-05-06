@@ -37,10 +37,15 @@ async def update_config(request: Request):
         if isinstance(provider_config, dict) and 'api_key' in provider_config:
             new_key = provider_config['api_key']
             if isinstance(new_key, str) and new_key.endswith('****'):
-                # This is a masked value, restore original key
+                # SECURITY: Validate prefix matches before restoring
+                # Prevents attackers from sending 'X****' to restore arbitrary keys
                 original = current_config.get(provider, {}).get('api_key', '')
-                if original:
-                    provider_config['api_key'] = original
+                if original and len(new_key) >= 4:
+                    # Check that the visible prefix matches (user must at least see the first 4 chars)
+                    visible_prefix = new_key[:-4]
+                    if original.startswith(visible_prefix):
+                        provider_config['api_key'] = original
+                    # If prefix doesn't match, leave the new value as-is (it will fail validation later)
 
     res = await config_service.update_config(data)
 
