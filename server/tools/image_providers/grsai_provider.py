@@ -91,7 +91,7 @@ class GrsaiProvider(ImageProviderBase):
             }
 
             if input_images and len(input_images) > 0:
-                payload["referenceImages"] = input_images
+                payload["images"] = input_images
 
             # Submit generation task
             try:
