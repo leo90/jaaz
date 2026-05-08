@@ -9,7 +9,7 @@ from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from services.websocket_service import send_to_websocket  # type: ignore
 from services.config_service import config_service
-from typing import Optional, List, Dict, Any, cast, Set, TypedDict
+from typing import Optional, List, Dict, Any, cast, Set, TypedDict, Tuple
 from models.config_model import ModelInfo
 
 
@@ -39,7 +39,7 @@ def clear_session_input_images(session_id: str) -> None:
     _session_input_images.pop(session_id, None)
 
 
-def _fix_chat_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _fix_chat_history(messages: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
     """修复聊天历史中不完整的工具调用，并提取参考图片
 
     根据LangGraph文档建议，移除没有对应ToolMessage的tool_calls
@@ -50,7 +50,7 @@ def _fix_chat_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     - 把图片URL保存到session上下文中，供生图工具自动使用
     """
     if not messages:
-        return messages
+        return messages, []
 
     fixed_messages: List[Dict[str, Any]] = []
     tool_call_ids: Set[str] = set()
@@ -82,25 +82,43 @@ def _fix_chat_history(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                         elif part.get('type') == 'image_url':
                             image_url = part.get('image_url', {}).get('url', '')
                             if image_url:
-                                collected_image_urls.append(image_url)
+                                # 如果是base64，保存为文件后用文件名传入（GRSAI兼容格式）
+                                if image_url.startswith('data:'):
+                                    try:
+                                        import base64
+                                        from io import BytesIO
+                                        from PIL import Image
+                                        import os
+                                        from tools.utils.image_utils import generate_image_id
+                                        from services.config_service import FILES_DIR
+
+                                        # 解析base64
+                                        header, data = image_url.split(',', 1)
+                                        image_data = base64.b64decode(data)
+                                        image = Image.open(BytesIO(image_data))
+
+                                        # 保存为JPG文件
+                                        img_id = generate_image_id()
+                                        filename = f'{img_id}.jpg'
+                                        filepath = os.path.join(FILES_DIR, filename)
+                                        image.save(filepath, 'JPEG', quality=95)
+                                        collected_image_urls.append(filename)
+                                    except Exception as e:
+                                        pass
+                                else:
+                                    collected_image_urls.append(image_url)
                                 image_count += 1
 
-                # 重建纯文本消息内容
+                # 关键：给LLM纯文本消息（模型非VLM，不能接受混合内容）
+                # 但保留原始图片URL在session中，由工具自动注入
+                msg_copy = msg.copy()
                 if text_parts:
-                    msg_copy = msg.copy()
-                    # 如果有图片，在文本中提示LLM（但不传递图片本身）
-                    if image_count > 0:
-                        text_with_note = '\n\n'.join(text_parts) + \
-                            f'\n\n[注：用户上传了 {image_count} 张参考图片，调用生图工具时会自动添加到参数中]'
-                        msg_copy['content'] = text_with_note
-                    else:
-                        msg_copy['content'] = '\n\n'.join(text_parts)
-                    fixed_messages.append(msg_copy)
+                    text_with_note = '\n\n'.join(text_parts) + \
+                        f'\n\n[已上传 {image_count} 张参考图片，调用生图工具时会自动添加]'
+                    msg_copy['content'] = text_with_note
                 else:
-                    # 只有图片没有文本，发送一条简单消息
-                    msg_copy = msg.copy()
-                    msg_copy['content'] = f'[用户上传了 {image_count} 张参考图片，请使用生图工具处理]'
-                    fixed_messages.append(msg_copy)
+                    msg_copy['content'] = f'[已上传 {image_count} 张参考图片，请使用生图工具处理]'
+                fixed_messages.append(msg_copy)
                 continue
 
         if msg.get('role') == 'assistant' and msg.get('tool_calls'):
@@ -186,11 +204,13 @@ async def langgraph_multi_agent(
             default_active_agent=last_agent if last_agent else agent_names[0]
         )
 
-        # 5. 创建上下文
+        # 5. 创建上下文 (RunnableConfig 格式)
         context = {
-            'canvas_id': canvas_id,
-            'session_id': session_id,
-            'tool_list': tool_list,
+            'configurable': {
+                'canvas_id': canvas_id,
+                'session_id': session_id,
+                'tool_list': tool_list,
+            }
         }
 
         # 6. 流处理

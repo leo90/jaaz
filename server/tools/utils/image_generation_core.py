@@ -22,13 +22,6 @@ from .image_canvas_utils import (
 )
 import time
 
-# 导入session参考图片管理函数
-try:
-    from services.langgraph_service.agent_service import get_session_input_images
-except ImportError:
-    def get_session_input_images(session_id: str) -> list[str]:
-        return []
-
 IMAGE_PROVIDERS: dict[str, ImageProviderBase] = {
     "jaaz": JaazImageProvider(),
     "openai": OpenAIImageProvider(),
@@ -69,13 +62,28 @@ async def generate_image_with_provider(
     if not provider_instance:
         raise ValueError(f"Unknown provider: {provider}")
 
-    # 如果没有显式传入图片，尝试从session上下文中获取
-    final_input_images: list[str] | None = input_images
-    if not final_input_images and session_id:
-        session_images = get_session_input_images(session_id)
+    # 从session上下文中获取参考图片并追加（不管有没有显式传入）
+    final_input_images: list[str] = list(input_images) if input_images else []
+
+    if session_id:
+        # 动态导入，避免循环导入问题
+        try:
+            from services.langgraph_service.agent_service import get_session_input_images
+            session_images = get_session_input_images(session_id)
+        except Exception:
+            session_images = []
         if session_images:
             print(f"📸 从session上下文自动注入 {len(session_images)} 张参考图片到生图工具")
-            final_input_images = session_images
+            # 去重后合并
+            seen = set(final_input_images)
+            for img in session_images:
+                if img not in seen:
+                    final_input_images.append(img)
+                    seen.add(img)
+
+    # 如果最终还是没有图片，设为 None
+    if not final_input_images:
+        final_input_images = None
 
     # Process input images for the provider
     processed_input_images: list[str] | None = None

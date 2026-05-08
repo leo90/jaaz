@@ -101,7 +101,7 @@ class GrsaiProvider(ImageProviderBase):
                         json=payload,
                         headers=headers,
                     ) as resp:
-                        resp_json = await resp.json()
+                        resp_json = await resp.json(content_type=None)
                         if resp_json.get("code") != 0:
                             raise Exception(
                                 f"GRSAI API error: {resp_json.get('msg', resp_json)}"

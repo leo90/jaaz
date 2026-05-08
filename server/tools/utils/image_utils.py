@@ -139,7 +139,7 @@ async def process_input_image(input_image: str | None) -> str | None:
     Process input image and convert to base64 format
 
     Args:
-        input_image: Image file path
+        input_image: Image file path OR base64 data URL
 
     Returns:
         Base64 encoded image with data URL, or None if no image
@@ -148,6 +148,11 @@ async def process_input_image(input_image: str | None) -> str | None:
         return None
 
     try:
+        # 如果已经是 base64 data URL，直接返回（不需要再处理）
+        if input_image.startswith('data:'):
+            return input_image
+
+        # 否则按文件名处理
         full_path = os.path.join(FILES_DIR, input_image)
         if not os.path.exists(full_path):
             print(f"Warning: Image file not found: {full_path}")

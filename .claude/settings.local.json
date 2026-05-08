@@ -67,7 +67,10 @@
       "Bash(pkill -f \"uvicorn\")",
       "Bash(taskkill /F /IM claude.exe)",
       "Bash(pkill -f \"python.*main\")",
-      "Bash(pkill -f uvicorn)"
+      "Bash(pkill -f uvicorn)",
+      "PowerShell(Get-Process *)",
+      "PowerShell($env:NODE_ENV = \"development\"; npx electron electron/main.js)",
+      "PowerShell(Get-Content *)"
     ]
   }
 }
