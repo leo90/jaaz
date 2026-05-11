@@ -250,10 +250,11 @@ def _create_text_model(text_model: ModelInfo) -> Any:
             api_key=api_key,  # type: ignore
             timeout=300,
             base_url=url,
-            temperature=0,
+            temperature=0.1,  # 从0改为0.1，避免纯0导致的模型输出不稳定
             # max_tokens=max_tokens, # TODO: 暂时注释掉有问题的参数
             http_client=http_client,
-            http_async_client=http_async_client
+            http_async_client=http_async_client,
+            streaming=True,  # 确保流式输出正常
         )
 
 

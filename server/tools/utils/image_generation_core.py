@@ -65,6 +65,9 @@ async def generate_image_with_provider(
     # 从session上下文中获取参考图片并追加（不管有没有显式传入）
     final_input_images: list[str] = list(input_images) if input_images else []
 
+    # 过滤空字符串（修复 LLM 生成的空引号 bug）
+    final_input_images = [img for img in final_input_images if img and img.strip()]
+
     if session_id:
         # 动态导入，避免循环导入问题
         try:
@@ -72,6 +75,8 @@ async def generate_image_with_provider(
             session_images = get_session_input_images(session_id)
         except Exception:
             session_images = []
+        # 同样过滤空字符串
+        session_images = [img for img in session_images if img and img.strip()]
         if session_images:
             print(f"📸 从session上下文自动注入 {len(session_images)} 张参考图片到生图工具")
             # 去重后合并

@@ -64,6 +64,46 @@ DEFAULT_PROVIDERS_CONFIG: AppConfig = {
         'url': 'https://grsai.dakka.com.cn',
         'api_key': '',
     },
+    'image_hosting': {
+        # No-auth services (always available)
+        'catbox_enabled': True,
+        'vim_cn_enabled': True,
+
+        # Cloud storage (user-configurable, optional)
+        'cloudflare_r2': {
+            'account_id': '',
+            'access_key_id': '',
+            'secret_access_key': '',
+            'bucket_name': '',
+            'public_url': '',   # e.g., 'https://r2.example.com'
+            'enabled': False,
+        },
+        'aliyun_oss': {
+            'access_key_id': '',
+            'access_key_secret': '',
+            'endpoint': '',
+            'bucket_name': '',
+            'public_url': '',
+            'enabled': False,
+        },
+        'tencent_cos': {
+            'secret_id': '',
+            'secret_key': '',
+            'region': '',
+            'bucket_name': '',
+            'public_url': '',
+            'enabled': False,
+        },
+        'qiniu': {
+            'access_key': '',
+            'secret_key': '',
+            'bucket_name': '',
+            'domain': '',
+            'enabled': False,
+        },
+        # Upload priority order
+        'preferred_order': 'catbox,vim_cn',
+    },
 
 }
 

@@ -45,6 +45,11 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useQueryClient } from '@tanstack/react-query'
 import MixedContent, { MixedContentImages, MixedContentText } from './Message/MixedContent'
 
+// 工具调用参数过滤：检查是否全是引号或空格
+function allCharsAreQuotesOrSpaces(str: string): boolean {
+  return str.split('').every(c => '"\\\' '.includes(c))
+}
+
 
 type ChatInterfaceProps = {
   canvasId: string
@@ -364,7 +369,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               if (pendingToolConfirmations.includes(data.id)) {
                 return
               }
-              toolCall.function.arguments += data.text
+              // 暂时不过滤，显示所有内容以便调试
+              const rawText = data.text || ''
+              if (rawText.trim()) {
+                console.log('[Frontend] 收到工具参数:', rawText.substring(0, 100))
+              }
+              toolCall.function.arguments += rawText
             }
           }
         })

@@ -35,6 +35,54 @@ class GrsaiProvider(ImageProviderBase):
         }
         return ratio_map.get(aspect_ratio, "auto")
 
+    async def _convert_images_to_public_urls(self, input_images: list[str]) -> list[str]:
+        """
+        Convert local filenames/base64 data URLs to public HTTP URLs.
+
+        Graceful degradation: if any upload fails, skip reference images entirely
+        (don't fail the whole generation request).
+        """
+        from tools.utils.image_uploader import upload_image_to_public
+        from services.config_service import FILES_DIR
+        import os
+
+        # 过滤空字符串
+        input_images = [img for img in input_images if img and img.strip()]
+        if not input_images:
+            print("GRSAI: 过滤后没有有效的参考图片")
+            return []
+
+        public_urls = []
+        successful_count = 0
+
+        for image_source in input_images:
+            # Resolve full path if it's a filename
+            if not image_source.startswith("data:"):
+                full_path = os.path.join(FILES_DIR, image_source)
+                if not os.path.exists(full_path):
+                    print(f"GRSAI: Image file not found, skipping: {full_path}")
+                    continue
+                image_source = full_path
+
+            # Upload to public hosting
+            try:
+                result = await upload_image_to_public(image_source, timeout_seconds=30)
+                if result.success:
+                    print(f"GRSAI: Uploaded reference image to {result.service}: {result.url}")
+                    public_urls.append(result.url)
+                    successful_count += 1
+                else:
+                    print(f"GRSAI: Failed to upload reference image: {result.error}")
+            except Exception as e:
+                print(f"GRSAI: Exception uploading reference image: {e}")
+
+        if not public_urls and input_images:
+            print("GRSAI: All reference image uploads failed, proceeding without reference images")
+        elif successful_count < len(input_images):
+            print(f"GRSAI: Partial upload success: {successful_count}/{len(input_images)} images uploaded")
+
+        return public_urls
+
     async def _poll_for_result(self, task_id: str, headers: dict[str, str]) -> dict:
         base_url = self._get_base_url()
         async with HttpClient.create_aiohttp() as session:
@@ -86,12 +134,19 @@ class GrsaiProvider(ImageProviderBase):
                 "model": model,
                 "prompt": prompt,
                 "aspectRatio": self._map_aspect_ratio(aspect_ratio),
-                "webHook": "-1",  # return task ID immediately
+                "webhook": "-1",  # return task ID immediately
                 "shutProgress": True,
+                "urls": [],
             }
 
             if input_images and len(input_images) > 0:
-                payload["images"] = input_images
+                print(f"GRSAI: 开始处理 {len(input_images)} 张输入图片")
+                # Upload reference images to public hosting and get URLs
+                public_urls = await self._convert_images_to_public_urls(input_images)
+                payload["urls"] = public_urls
+                print(f"GRSAI: 最终发送到 API 的参考图片数量: {len(public_urls)}")
+                for i, url in enumerate(public_urls, 1):
+                    print(f"GRSAI: 图片 {i}: {url}")
 
             # Submit generation task
             try:

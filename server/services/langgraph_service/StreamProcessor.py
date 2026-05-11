@@ -103,10 +103,12 @@ class StreamProcessor:
                 elif isinstance(content, dict) and 'text' in content:
                     text_content = content['text']
 
-                await self.websocket_service(self.session_id, {
-                    'type': 'delta',
-                    'text': text_content
-                })
+                # 只在有实际文本内容时发送
+                if text_content and text_content.strip():
+                    await self.websocket_service(self.session_id, {
+                        'type': 'delta',
+                        'text': text_content
+                    })
             elif hasattr(ai_message_chunk, 'tool_calls') and ai_message_chunk.tool_calls and ai_message_chunk.tool_calls[0].get('name'):
                 # 处理工具调用
                 await self._handle_tool_calls(ai_message_chunk.tool_calls)
@@ -152,14 +154,21 @@ class StreamProcessor:
         """处理工具调用参数流"""
         for tool_call_chunk in tool_call_chunks:
             if tool_call_chunk.get('id'):
-                # 标记新的流式工具调用参数开始
                 self.last_streaming_tool_call_id = tool_call_chunk.get('id')
             else:
                 if self.last_streaming_tool_call_id:
-                    await self.websocket_service(self.session_id, {
-                        'type': 'tool_call_arguments',
-                        'id': self.last_streaming_tool_call_id,
-                        'text': tool_call_chunk.get('args')
-                    })
+                    args_text = tool_call_chunk.get('args')
+
+                    if args_text and args_text.strip():
+                        cleaned = args_text.strip()
+
+                        is_garbage = len(cleaned) > 10 and all(c in '"\' ' for c in cleaned)
+
+                        if not is_garbage:
+                            await self.websocket_service(self.session_id, {
+                                'type': 'tool_call_arguments',
+                                'id': self.last_streaming_tool_call_id,
+                                'text': args_text
+                            })
                 else:
                     logging.warning(f'No last_streaming_tool_call_id for chunk: {tool_call_chunk}')
